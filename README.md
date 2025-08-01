@@ -1,6 +1,6 @@
 # Advanced-Web-development2
 # Link to Live site
-https://kelseykyla.github.io/Advanced-Web-development/
+https://kelseykyla.github.io/Advanced-Web-development2/
 # Advanced-Web-development
 /*
   JS Features Used:
