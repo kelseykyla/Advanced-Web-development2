@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Study Pod Booking Widget</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f7f9fc;
+      margin: 40px auto;
+      max-width: 800px;
+      padding: 0 20px;
+      color: #333;
+    }
+
+    h1, h2 {
+      color: #00274d;
+      margin-top: 30px;
+    }
+
+    label {
+      display: block;
+      margin: 12px 0 6px;
+      font-weight: 500;
+    }
+
+    select, input[type="time"], input[type="text"] {
+      padding: 10px;
+      font-size: 15px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      width: 100%;
+      box-sizing: border-box;
+      background-color: #fff;
+      margin-bottom: 10px;
+    }
+
+    button {
+      padding: 10px 16px;
+      font-size: 15px;
+      background: linear-gradient(to right, #0077b6, #00b4d8);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 10px;
+      margin-right: 10px;
+      transition: background 0.3s ease;
+    }
+
+    button:hover {
+      background: linear-gradient(to right, #023e8a, #0077b6);
+    }
+
+    #undoBtn {
+      background: linear-gradient(to right, #6c757d, #adb5bd);
+    }
+
+    #undoBtn:hover {
+      background: linear-gradient(to right, #495057, #6c757d);
+    }
+
+    #errors {
+      color: #d62828;
+      background-color: #ffe5e5;
+      padding: 10px;
+      border-radius: 6px;
+      margin-top: 10px;
+      font-weight: 500;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      background-color: #ffffff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    }
+
+    th, td {
+      border: 1px solid #dee2e6;
+      text-align: left;
+      padding: 12px;
+      font-size: 14px;
+    }
+
+    th {
+      background-color: #e9f5ff;
+      color: #00274d;
+      font-weight: 600;
+    }
+
+    .removeBtn {
+      background: #ef233c;
+      color: white;
+      border: none;
+      padding: 6px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .removeBtn:hover {
+      background: #d90429;
+    }
+
+    .insight-box {
+      margin-top: 30px;
+      background-color: #edf6f9;
+      padding: 20px;
+      border-radius: 8px;
+      border-left: 6px solid #00b4d8;
+    }
+
+    .insight-box div {
+      margin-bottom: 8px;
+      font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Study Pod Booking Widget</h1>
+
+  <form id="bookingForm">
+    <label for="podSelect">Select Pod:</label>
+    <select id="podSelect"></select>
+
+    <label for="timeInput">Time (HH:MM):</label>
+    <input type="time" id="timeInput" step="3600" />
+
+    <label for="studentIds">Student IDs (comma-separated):</label>
+    <input type="text" id="studentIds" placeholder="e.g., SIT-001,SIT-045" />
+
+    <button type="submit">Book</button>
+    <button type="button" id="undoBtn">Undo Last Booking</button>
+
+    <div id="errors"></div>
+  </form>
+
+  <h2>All Bookings</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Pod</th>
+        <th>Time</th>
+        <th># Students</th>
+        <th>Student IDs</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="bookingTable"></tbody>
+  </table>
+
+  <div class="insight-box">
+    <h2>Insights</h2>
+    <div id="insights"></div>
+  </div>
+
+  <script>
+    /*
+      JS Features Used:
+      - Variables & Data Types: let, const, arrays, strings, objects, numbers
+      - Control Structures: if/else, for loops, strict comparisons (===)
+      - Loops: standard for and for...of for rendering and logic
+      - Functions: for parsing, validation, undo, rendering, insights
+      - Events: form submit, click (delegation), undo button
+      - DOM Manipulation: createElement, textContent, appendChild, event listeners
+    */
+
+    const pods = [
+      { id: "POD-A", capacity: 4 },
+      { id: "POD-B", capacity: 4 },
+      { id: "POD-C", capacity: 4 }
+    ];
+
+    const initialBookings = [
+      { podId: "POD-A", time: "09:00", students: ["SIT-001", "SIT-045"] },
+      { podId: "POD-B", time: "10:00", students: ["SMC-210"] }
+    ];
+
+    let bookings = [...initialBookings];
+    let bookingHistoryStack = [];
+    let duplicateAttempts = 0;
+
+    const podSelect = document.getElementById("podSelect");
+    const form = document.getElementById("bookingForm");
+    const undoBtn = document.getElementById("undoBtn");
+    const errorsDiv = document.getElementById("errors");
+    const bookingTable = document.getElementById("bookingTable");
+    const insightsDiv = document.getElementById("insights");
+
+    for (let pod of pods) {
+      const option = document.createElement("option");
+      option.value = pod.id;
+      option.textContent = pod.id;
+      podSelect.appendChild(option);
+    }
+
+    function parseStudentIds(input) {
+      return input
+        .split(",")
+        .map(id => id.trim().toUpperCase())
+        .filter(id => id);
+    }
+
+    function isWithinOperatingHours(time) {
+      return time >= "08:00" && time < "20:00"; // strict check
+    }
+
+    function findBooking(podId, time) {
+      for (let booking of bookings) {
+        if (booking.podId === podId && booking.time === time) {
+          return booking;
+        }
+      }
+      return null;
+    }
+
+    function hasCrossPodClash(studentId, time, podId) {
+      for (let booking of bookings) {
+        if (booking.time === time && booking.podId !== podId && booking.students.includes(studentId)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function roundTo1Decimal(value) {
+      return Math.round(value * 10) / 10;
+    }
+
+    function renderBookings() {
+      bookingTable.innerHTML = "";
+      for (let i = 0; i < bookings.length; i++) {
+        const booking = bookings[i];
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${i + 1}</td>
+          <td>${booking.podId}</td>
+          <td>${booking.time}</td>
+          <td>${booking.students.length}</td>
+          <td>${booking.students.join(", ")}</td>
+          <td><button class="removeBtn" data-index="${i}">Remove</button></td>
+        `;
+        bookingTable.appendChild(row);
+      }
+      recomputeInsights();
+    }
+
+    function recomputeInsights() {
+      let totalBookings = bookings.length;
+      let uniqueStudents = [];
+      let hourCounts = {};
+      let podUsage = {};
+      let podSeats = {};
+
+      for (let pod of pods) {
+        podUsage[pod.id] = {};
+        podSeats[pod.id] = 0;
+      }
+
+      for (let booking of bookings) {
+        for (let student of booking.students) {
+          if (!uniqueStudents.includes(student)) uniqueStudents.push(student);
+        }
+        hourCounts[booking.time] = (hourCounts[booking.time] || 0) + booking.students.length;
+        podUsage[booking.podId][booking.time] = true;
+        podSeats[booking.podId] += booking.students.length;
+      }
+
+      let busiestHour = null;
+      let max = 0;
+      for (let hour in hourCounts) {
+        if (hourCounts[hour] > max) {
+          max = hourCounts[hour];
+          busiestHour = hour;
+        }
+      }
+
+      let fillRates = "";
+      for (let pod of pods) {
+        const used = Object.keys(podUsage[pod.id]).length;
+        const maxSeats = used * pod.capacity;
+        const rate = maxSeats > 0 ? (podSeats[pod.id] / maxSeats) * 100 : 0;
+        fillRates += `<div>${pod.id}: ${roundTo1Decimal(rate)}%</div>`;
+      }
+
+      insightsDiv.innerHTML = `
+        <div>Total bookings today: ${totalBookings}</div>
+        <div>Total unique students: ${uniqueStudents.length}</div>
+        <div>Busiest hour: ${busiestHour || "N/A"}</div>
+        <div>Fill-rate per pod: ${fillRates}</div>
+        <div>Duplicate attempts blocked: ${duplicateAttempts}</div>
+      `;
+    }
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      errorsDiv.textContent = "";
+
+      const podId = podSelect.value;
+      const time = document.getElementById("timeInput").value;
+      const studentIds = parseStudentIds(document.getElementById("studentIds").value);
+
+      if (!podId || !time || studentIds.length === 0) {
+        errorsDiv.textContent = "Please fill all fields correctly.";
+        return;
+      }
+
+      if (!isWithinOperatingHours(time)) {
+        errorsDiv.textContent = "Time must be between 08:00 and before 20:00.";
+        return;
+      }
+
+      const existing = findBooking(podId, time);
+      const combined = existing ? existing.students.slice() : [];
+
+      for (let id of studentIds) {
+        if (combined.includes(id)) {
+          duplicateAttempts++;
+          errorsDiv.textContent = `${id} already booked in this pod/time.`;
+          return;
+        }
+        if (hasCrossPodClash(id, time, podId)) {
+          duplicateAttempts++;
+          errorsDiv.textContent = `${id} booked in another pod at same time.`;
+          return;
+        }
+      }
+
+      const booking = { podId, time, students: [...studentIds] };
+      bookingHistoryStack.push(booking);
+
+      if (existing) {
+        existing.students.push(...studentIds);
+      } else {
+        bookings.push(booking);
+      }
+
+      document.getElementById("studentIds").value = "";
+      document.getElementById("studentIds").focus();
+      errorsDiv.textContent = "";
+      renderBookings();
+    });
+
+    bookingTable.addEventListener("click", function (e) {
+      if (e.target.classList.contains("removeBtn")) {
+        const index = parseInt(e.target.dataset.index);
+        bookings.splice(index, 1);
+        renderBookings();
+      }
+    });
+
+    undoBtn.addEventListener("click", function () {
+      if (bookingHistoryStack.length > 0) {
+        const last = bookingHistoryStack.pop();
+        for (let i = bookings.length - 1; i >= 0; i--) {
+          if (
+            bookings[i].podId === last.podId &&
+            bookings[i].time === last.time &&
+            JSON.stringify(bookings[i].students) === JSON.stringify(last.students)
+          ) {
+            bookings.splice(i, 1);
+            break;
+          }
+        }
+        renderBookings();
+      } else {
+        errorsDiv.textContent = "Nothing to undo.";
+      }
+    });
+
+    renderBookings();
+  </script>
+</body>
+</html>
